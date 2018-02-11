@@ -1,0 +1,235 @@
+{
+  parserClass="ru.hivesqlplugin.parser.HiveSQLParser"
+
+  extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
+
+  psiClassPrefix="HiveSQL"
+  psiImplClassSuffix="Impl"
+  psiPackage="ru.hivesqlplugin.psi"
+  psiImplPackage="ru.hivesqlplugin.psi.impl"
+
+  elementTypeHolderClass="ru.hivesqlplugin.psi.HiveSQLTypes"
+  elementTypeClass="ru.hivesqlplugin.psi.HiveSQLElementType"
+  tokenTypeClass="ru.hivesqlplugin.psi.HiveSQLTokenType"
+
+  tokens=[
+      space='regexp:\s+'
+      oneline_comment='regexp://.*'
+      integer='regexp:\d+'
+      number='regexp:\d+(\.\d*)?'
+      singlequotedstring="regexp:'([^'\\]|\\.)*'"
+      doublequotedstring='regexp:"([^"\\]|\\.)*"'
+
+
+      identifier='regexp:[_a-zA-Z][a-zA-Z0-9_]*'
+    ]
+
+
+}
+
+// ToDo: add comments to grammar
+
+hsqlFile ::= queries_*
+
+private queries_ ::= query ((query';')+ |';'?)
+
+query ::= (ddl|dml)
+
+// ToDo: add other DDL operations
+ddl ::= (create_database|drop_database|alter_database|use_statement|create_table|drop_table|truncate_table)
+
+dml ::= (select_statement|load_data|insert_statement|delete_statement|update_statement|merge_statement|import|export)
+
+create_database ::= CREATE (DATABASE|SCHEMA) [IF NOT EXISTS] database_name
+                      [COMMENT database_comment]
+                      [LOCATION hdfs_path]
+                      [WITH DBPROPERTIES db_properties]
+
+private property_value ::= doublequotedstring
+private property_name ::= doublequotedstring
+
+private hdfs_path ::=singlequotedstring
+private file_path ::=singlequotedstring
+
+private database_name ::= identifier
+private table_name ::= identifier
+private col_name ::= identifier
+private constraint_name ::= identifier
+private serde_name ::= singlequotedstring
+private existing_table_or_view_name ::= identifier
+partition_column ::= identifier
+
+private database_comment ::= singlequotedstring
+private table_comment ::= singlequotedstring
+private col_comment ::= singlequotedstring
+
+private db_properties ::= '('property_name'='property_value(','property_name'='property_value)*')'
+private table_properties ::= '('property_name'='property_value(','property_name'='property_value)*')'
+private serde_properties ::= '('property_name'='property_value(','property_name'='property_value)*')'
+
+private columns_list ::= col_name (',' col_name)
+private columns_list_with_types_and_opt_comments ::= col_name data_type [COMMENT col_comment](',' col_name data_type [COMMENT col_comment])*
+
+private precision ::= integer
+private scale ::= integer
+private num_buckets ::= integer
+
+private input_format_classname ::= singlequotedstring
+private output_format_classname ::= singlequotedstring
+
+private values_row ::= ( value (',' value)* )
+private value ::= string | integer // ToDo: add other literals
+
+
+drop_database ::= DROP (DATABASE|SCHEMA) [IF EXISTS] database_name [RESTRICT|CASCADE]
+
+alter_database ::=
+    ALTER (DATABASE|SCHEMA) database_name SET DBPROPERTIES db_properties |
+    ALTER (DATABASE|SCHEMA) database_name SET OWNER [USER|ROLE] user_or_role |
+    ALTER (DATABASE|SCHEMA) database_name SET LOCATION hdfs_path
+
+private user_or_role ::=    identifier;
+
+use_statement ::= USE (database_name | DEFAULT)
+
+create_table ::= CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [database_name'.']table_name
+                   [(columns_list_with_types_and_opt_comments [constraint_specification])]
+                   [COMMENT table_comment]
+                   [PARTITIONED BY (columns_list_with_types_and_opt_comments)]
+                   [CLUSTERED BY (columns_list) [SORTED BY (col_name [ASC|DESC] (',' col_name [ASC|DESC])+ )] INTO num_buckets BUCKETS]
+                   [SKEWED BY (columns_list)
+                      ON ((columns_list) (',' (columns_list))+ )
+                      [STORED AS DIRECTORIES]
+                   ]
+                   [
+                      ROW FORMAT row_format
+                      | STORED AS file_format
+                      | ROW FORMAT row_format STORED AS file_format
+                      | STORED BY 'storage.handler.class.name' [WITH SERDEPROPERTIES (serde_properties)]
+                   ]
+                   [LOCATION hdfs_path]
+                   [TBLPROPERTIES (table_properties)]
+                   [AS select_statement]
+
+                 | CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [database_name'.']table_name
+                   LIKE existing_table_or_view_name
+                   [LOCATION hdfs_path];
+
+
+
+
+
+
+data_type ::= primitive_type
+               | array_type
+               | map_type
+               | struct_type
+               | union_type
+
+primitive_type ::= TINYINT
+                   | SMALLINT
+                   | INT
+                   | BIGINT
+                   | BOOLEAN
+                   | FLOAT
+                   | DOUBLE
+                   | DOUBLE PRECISION
+                   | STRING
+                   | BINARY
+                   | TIMESTAMP
+                   | DECIMAL
+                   | DECIMAL(precision',' scale)
+                   | DATE
+                   | VARCHAR
+                   | CHAR
+
+array_type ::= ARRAY '<'data_type'>'
+
+map_type ::= MAP '<'primitive_type','data_type'>'
+
+struct_type ::= STRUCT '<'col_name ':' data_type [COMMENT col_comment] (',' col_name ':' data_type [COMMENT col_comment])+'>'
+
+union_type ::= UNIONTYPE '<'data_type(',' data_type)+'>'
+
+constraint_specification ::= [',' PRIMARY KEY (columns_list) DISABLE NOVALIDATE ]
+                             [',' CONSTRAINT constraint_name FOREIGN KEY (columns_list) REFERENCES table_name(columns_list) DISABLE NOVALIDATE]
+
+row_format ::= DELIMITED [FIELDS TERMINATED BY char [ESCAPED BY char]] [COLLECTION ITEMS TERMINATED BY char]
+                         [MAP KEYS TERMINATED BY char] [LINES TERMINATED BY char]
+                         [NULL DEFINED AS char]
+                   | SERDE serde_name [WITH SERDEPROPERTIES (serde_properties)]
+
+file_format ::= SEQUENCEFILE
+                | TEXTFILE
+                | RCFILE
+                | ORC
+                | PARQUET
+                | AVRO
+                | INPUTFORMAT input_format_classname OUTPUTFORMAT output_format_classname
+
+
+drop_table ::= DROP TABLE [IF EXISTS] table_name [PURGE]
+
+truncate_table ::= TRUNCATE TABLE table_name [PARTITION partition_spec]
+
+private partition_spec ::= (partition_column '=' value (',' partition_column '=' value)* )
+private partition_columns_with_optional_values ::= partition_column ['=' value] (',' partition_column ['=' value])*
+
+
+select_statement ::= [WITH common_table_expression_list]
+                     SELECT [ALL | DISTINCT] select_expr_list
+                       FROM table_name
+                       [WHERE boolean_expression]
+                       [GROUP BY columns_list]
+                       [ORDER BY columns_list]
+                       [CLUSTER BY columns_list
+                         | [DISTRIBUTE BY columns_list] [SORT BY columns_list]
+                       ]
+                      [LIMIT [offset','] rows]
+
+select_expr_list ::= select_expr (',' select_expr)*
+select_expr ::= STUB
+
+common_table_expression_list ::= common_table_expression (',' common_table_expression)*
+common_table_expression ::= STUB
+
+private offset ::= integer
+private rows ::= integer
+
+load_data ::= LOAD DATA [LOCAL] INPATH file_path [OVERWRITE] INTO TABLE tablename [PARTITION (partition_spec)]
+
+insert_statement ::=  //Standard syntax:
+            INSERT OVERWRITE TABLE table_name [PARTITION (partition_spec) [IF NOT EXISTS]] select_statement FROM from_statement
+           | INSERT INTO TABLE table_name [PARTITION (partition_spec)] select_statement FROM from_statement
+
+           // Hive extension (multiple inserts):
+           | FROM from_statement
+           (INSERT OVERWRITE TABLE table_name [PARTITION (partition_spec) [IF NOT EXISTS]] select_statement |
+           INSERT INTO TABLE table_name [PARTITION (partition_spec)] select_statement)
+           (INSERT OVERWRITE TABLE table_name [PARTITION (partition_spec) [IF NOT EXISTS]] select_statement |
+                      INSERT INTO TABLE table_name [PARTITION (partition_spec)] select_statement)*
+
+           // Hive extension (dynamic partition inserts):
+           | INSERT OVERWRITE TABLE tablename PARTITION (partition_columns_with_optional_values) select_statement FROM from_statement
+           | INSERT INTO TABLE tablename PARTITION (partition_columns_with_optional_values) select_statement FROM from_statement
+
+           // ToDo: add Writing data into the filesystem from queries
+
+           // Standard Syntax:
+           | INSERT INTO TABLE tablename [PARTITION (partition_columns_with_optional_values)] VALUES values_row (',' values_row)*
+
+from_statement ::= FROM
+
+update_statement ::= UPDATE table_name SET set_clause_list [WHERE boolean_expression]
+
+set_clause_list ::= column '=' value (',' column '=' value)*
+
+delete_statement ::= DELETE FROM table_name [WHERE boolean_expression]
+
+boolean_expression ::= EXPR
+
+merge_statement ::= MERGE INTO table_name AS T USING (table_name | select_statement) AS S
+          ON boolean_expression
+          WHEN MATCHED [AND boolean_expression] THEN UPDATE SET set_clause_list
+          WHEN MATCHED [AND boolean_expression] THEN DELETE
+          WHEN NOT MATCHED [AND boolean_expression] THEN INSERT VALUES values_row
